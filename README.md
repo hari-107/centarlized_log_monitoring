@@ -100,5 +100,5 @@ For Gmail, use an [App Password](https://support.google.com/accounts/answer/1858
 docker-compose up --build -d    # Start
 docker-compose down             # Stop
 docker-compose logs -f django-app  # View Django logs
-docker-compose logs -f log-generator  # View log generation
+docker-compose logs -f log-generator  # View log generations
 ```
