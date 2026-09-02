@@ -3,9 +3,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-dummy-key-for-dev'
-DEBUG = True
-ALLOWED_HOSTS = ['*']
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-dummy-key-for-dev')
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -71,16 +71,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# ---------------------------------------------------------------------------
-# External Services
-# ---------------------------------------------------------------------------
+# External services
 ELASTICSEARCH_HOST = os.environ.get('ELASTICSEARCH_HOST', 'http://localhost:9200')
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.1')
+OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', '45'))
 
-# ---------------------------------------------------------------------------
-# Email Alerting Configuration (SMTP)
-# Set these environment variables to enable email alerts for High/Critical events.
-# ---------------------------------------------------------------------------
+# Email alerting configuration. Keep credentials outside source control.
 SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
 ALERT_EMAIL_FROM = os.environ.get('ALERT_EMAIL_FROM', '')
@@ -88,8 +85,5 @@ ALERT_EMAIL_TO = os.environ.get('ALERT_EMAIL_TO', '')
 SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
 
-# ---------------------------------------------------------------------------
-# APScheduler
-# ---------------------------------------------------------------------------
 APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"
 APSCHEDULER_RUN_NOW_TIMEOUT = 25
