@@ -1,104 +1,172 @@
 # Centralized Log Monitoring & Security Analytics Platform
 
-A scalable, containerized log analytics and security monitoring system powered by AI (Ollama LLM). Simulates multiple servers generating diverse logs, processes them through Elasticsearch, and provides real-time threat detection with email alerting.
+A containerized centralized log analytics and security monitoring platform using Elasticsearch, Filebeat, Django, and a **local Ollama LLM**. The platform combines deterministic security rules with AI enrichment to classify suspicious logs, prioritize threats, explain findings, and generate defensive recommendations.
 
 ## 🚀 Quick Start
 
-1. **Prerequisites**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
-2. **Clone & Launch**:
-   ```bash
-   git clone <repository-url>
-   cd centralized_log_monitoring
-   docker-compose up --build -d
-   ```
-3. **Dashboard**: Open [http://localhost:8000](http://localhost:8000)
+### Prerequisites
 
-> **Note:** On first run, the `llama3` model (~4.7GB) will auto-download. This may take several minutes.
+- Docker Desktop / Docker Engine with Compose
+- At least 8 GB RAM recommended for a local LLM
+
+### Launch
+
+```bash
+git clone https://github.com/hari-107/centarlized_log_monitoring.git
+cd centarlized_log_monitoring
+cp .env.example .env
+docker compose up --build -d
+```
+
+Pull the configured Ollama model once after the Ollama container starts:
+
+```bash
+docker compose exec ollama ollama pull llama3.1
+```
+
+Then open the dashboard at **http://localhost:8000**.
+
+> Ollama runs locally inside the Compose network. Log content is sent to the local model rather than a hosted AI API.
 
 ## 🏗️ Architecture
 
-| Component | Description |
-|-----------|-------------|
-| **Elasticsearch** | Centralized log storage and search engine |
-| **Filebeat** | Log collector forwarding structured JSON logs |
-| **Ollama** | Local AI engine (`llama3`) for threat classification |
-| **Django Backend** | REST API, processing pipeline, and email alerting |
-| **Log Generator** | Multi-server simulator (5 servers, 4 severity levels) |
-| **Grafana** | Optional visualization dashboards |
-
-## 🖥️ Simulated Servers
-
-| Server ID | Name | Environment | Threat Specialization |
-|-----------|------|-------------|----------------------|
-| srv-001 | linux-gateway | Linux System | SSH brute force, rootkits, privilege escalation |
-| srv-002 | web-server-nginx | Web Server | XSS, SQL injection, DDoS, web shells |
-| srv-003 | ssh-bastion | SSH Service | SSH brute force, dictionary attacks, key compromise |
-| srv-004 | database-postgres | Database Server | SQL injection, data exfiltration, unauthorized access |
-| srv-005 | api-gateway | API Gateway | Credential stuffing, token forgery, rate abuse |
-
-Each server uses **weighted severity distribution** (Low ~50%, Medium ~25%, High ~15%, Critical ~10%) for realistic log patterns.
-
-### Adding New Servers
-
-Add a new entry to `log-generator/server_config.py` in the `SERVERS` list. No other changes needed.
-
-## 🛠️ Key Features
-
-- **Multi-Server Monitoring**: 5 independent simulated servers with unique identities
-- **Advanced Filtering**: Filter by server, severity, keyword, IP, date range
-- **Weighted Severity**: Natural distribution across Low/Medium/High/Critical
-- **AI Threat Detection**: Automated classification via Ollama LLM every minute
-- **Email Alerting**: SMTP notifications for High/Critical events
-- **Severity Charts**: Doughnut chart for severity distribution, bar chart per server
-- **Top Attacking IPs**: Aggregated across all servers (24h window)
-- **Server Management**: Per-server drill-down with threat statistics
-- **Threat Patching**: Mark threats as resolved from the dashboard
-
-## 📧 Email Alerting Setup
-
-Uncomment and configure in `docker-compose.yml`:
-```yaml
-- SMTP_HOST=smtp.gmail.com
-- SMTP_PORT=587
-- ALERT_EMAIL_FROM=your-sender@gmail.com
-- ALERT_EMAIL_TO=your-recipient@gmail.com
-- SMTP_USERNAME=your-sender@gmail.com
-- SMTP_PASSWORD=your-app-password
+```text
+Log Generator / Servers
+        │
+        ▼
+     Filebeat
+        │
+        ▼
+ Elasticsearch
+        │
+        ▼
+ Django processing pipeline
+        │
+        ├── Rule-based detection
+        │      ├── auth failures
+        │      ├── brute force
+        │      ├── injection patterns
+        │      └── suspicious indicators
+        │
+        └── Ollama AI enrichment
+               ├── classification
+               ├── severity
+               ├── attack type
+               ├── confidence
+               ├── indicators
+               └── recommendation
+                        │
+                        ▼
+                 Threat database
+                        │
+                ┌───────┴────────┐
+                ▼                ▼
+            Dashboard        Email alerts
 ```
 
-For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
+| Component | Description |
+|-----------|-------------|
+| **Elasticsearch** | Centralized log storage and search |
+| **Filebeat** | Collects structured logs and forwards them to Elasticsearch |
+| **Ollama** | Local LLM used for security-log classification and enrichment |
+| **Django Backend** | Processing pipeline, APIs, threat storage, and alerting |
+| **Log Generator** | Simulates multiple monitored servers |
+| **Grafana** | Optional visualization |
 
-## 📊 Service URLs
+## 🧠 AI Threat Analysis
+
+Each newly processed threat can be enriched by Ollama with a structured result:
+
+```json
+{
+  "classification": "ATTACK",
+  "severity": "HIGH",
+  "attack_type": "BRUTE_FORCE",
+  "confidence": 0.94,
+  "summary": "Repeated authentication failures indicate possible credential attack activity.",
+  "recommendation": "Correlate source IP activity and review authentication logs.",
+  "indicators": ["repeated login failures", "root account targeted"]
+}
+```
+
+The implementation intentionally uses **rules + AI** instead of relying on the LLM alone. Existing high-risk deterministic findings are not downgraded by an AI result.
+
+### Supported detection categories
+
+`AUTH_FAILURE`, `BRUTE_FORCE`, `SQL_INJECTION`, `XSS`, `PATH_TRAVERSAL`, `COMMAND_INJECTION`, `SSRF`, `RCE`, `DOS_PATTERN`, `PRIVILEGE_ESCALATION`, `MALWARE_INDICATOR`, `DATA_EXFILTRATION`, `UNAUTHORIZED_ACCESS`, `PORT_SCAN`, and `UNKNOWN`.
+
+## 🛡️ Security Model
+
+The AI layer is **analysis-only**. It does not execute commands or directly modify the monitored host. Existing active-response functionality remains separate from AI analysis.
+
+High/Critical events can still trigger the configured email alerting workflow.
+
+## 📊 Threat Data
+
+AI metadata is stored on `ThreatLog`, including:
+
+- `ai_analyzed`
+- `ai_model`
+- `ai_confidence`
+- `ai_summary`
+- `ai_recommendation`
+- `ai_indicators`
+
+Run Django migrations after an update:
+
+```bash
+docker compose exec django-app python project/manage.py migrate
+```
+
+## 📧 Email Alerting
+
+Email credentials are **not stored in `docker-compose.yml`**. Copy `.env.example` to `.env` and configure:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-sender@gmail.com
+SMTP_PASSWORD=your-gmail-app-password
+ALERT_EMAIL_FROM=your-sender@gmail.com
+ALERT_EMAIL_TO=your-recipient@gmail.com
+```
+
+For Gmail, use an App Password rather than a normal account password.
+
+## 🌐 Service URLs
 
 | Service | URL |
 |---------|-----|
-| **Dashboard** | [http://localhost:8000](http://localhost:8000) |
-| **Elasticsearch** | [http://localhost:9200](http://localhost:9200) |
-| **Ollama** | [http://localhost:11434](http://localhost:11434) |
-| **Grafana** | [http://localhost:3000](http://localhost:3000) (admin/admin) |
+| **Dashboard** | http://localhost:8000 |
+| **Elasticsearch** | http://localhost:9200 |
+| **Ollama** | http://localhost:11434 |
+| **Grafana** | http://localhost:3000 |
 
 ## 📡 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/servers/` | List servers with threat stats |
-| GET | `/api/logs/?server_id=&severity=&keyword=` | Filtered ES logs |
-| GET | `/api/threats/?server_id=&severity=&status=` | Filtered threat alerts |
-| GET | `/api/stats/` | Aggregated dashboard statistics |
-| POST | `/api/analyze/` | Trigger manual AI analysis |
-| POST | `/api/resolve/<id>/` | Mark threat as resolved |
+| GET | `/api/servers/` | List monitored servers and threat statistics |
+| GET | `/api/logs/?server_id=&severity=&keyword=` | Search/filter Elasticsearch logs |
+| GET | `/api/threats/?server_id=&severity=&status=` | Filter stored threats |
+| GET | `/api/stats/` | Dashboard statistics |
+| POST | `/api/analyze/` | Trigger processing / analysis |
+| POST | `/api/resolve/<id>/` | Mark a threat as resolved |
 
-## 🔍 Troubleshooting
-
-- **No logs?** Wait ~30s for Filebeat to connect to Elasticsearch
-- **AI fails?** Ensure 8GB+ RAM is available for `llama3`
-- **Servers not showing?** Trigger an analysis first to sync servers from ES
-
-## 📜 Commands
+## 🔧 Useful Commands
 
 ```bash
-docker-compose up --build -d    # Start
-docker-compose down             # Stop
-docker-compose logs -f django-app  # View Django logs
-docker-compose logs -f log-generator  # View log generations
+docker compose up --build -d
+
+docker compose exec ollama ollama pull llama3.1
+
+docker compose exec django-app python project/manage.py migrate
+
+docker compose logs -f django-app
+docker compose logs -f ollama
+docker compose down
 ```
+
+## ⚠️ Secret Rotation
+
+If an SMTP password has ever been committed to this repository, revoke/rotate it immediately and create a new credential. The current Compose configuration uses environment variables so credentials stay outside source control.

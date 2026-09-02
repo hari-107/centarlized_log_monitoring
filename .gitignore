@@ -2,6 +2,11 @@
 logs/
 data/
 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -14,6 +19,8 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
+blocked_ips.json
+patched_logs.json
 
 # Virtual Environment
 venv/

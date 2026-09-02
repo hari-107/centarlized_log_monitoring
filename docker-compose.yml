@@ -14,6 +14,15 @@ services:
     networks:
       - log_network
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - log_network
+
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.11.0
     user: root
@@ -34,22 +43,27 @@ services:
     networks:
       - log_network
 
-
-
   django-app:
     build: ./django-app
     ports:
       - "8000:8000"
     depends_on:
       - elasticsearch
+      - ollama
     environment:
-      - ELASTICSEARCH_HOST=http://elasticsearch:9200
-      - SMTP_HOST=smtp.gmail.com
-      - SMTP_PORT=587
-      - SMTP_USERNAME=d.logmonitoring@gmail.com
-      - SMTP_PASSWORD=brmabvqlziayqtof
-      - ALERT_EMAIL_FROM=d.logmonitoring@gmail.com
-      - ALERT_EMAIL_TO=hariprasath475767@gmail.com
+      ELASTICSEARCH_HOST: http://elasticsearch:9200
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-45}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-only}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
     networks:
       - log_network
 
@@ -66,3 +80,4 @@ networks:
 
 volumes:
   log_data:
+  ollama_data:
