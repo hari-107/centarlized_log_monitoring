@@ -2,7 +2,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from django_apscheduler.jobstores import DjangoJobStore, register_events
 from django.utils import timezone
-from .services import process_and_store_logs
+from .services import process_and_store_logs, AlertService
 from .models import ThreatLog
 from .ai_analyzer import analyze_log
 import logging
@@ -14,24 +14,32 @@ def _risk_from_severity(severity):
     return {"LOW": 15, "MEDIUM": 40, "HIGH": 70, "CRITICAL": 90}.get(severity, 15)
 
 
+def _rank(severity):
+    return {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}.get(severity, 0)
+
+
 def process_ai_analysis():
-    """Enrich recent rule-processed logs using local Ollama without taking active response actions."""
+    """Enrich recent rule-processed logs using local Ollama."""
     candidates = ThreatLog.objects.filter(ai_analyzed=False).order_by('timestamp')[:50]
+    alert_service = AlertService()
+
     for threat in candidates:
         try:
+            previous_severity = threat.severity_level.upper()
+            previous_classification = threat.classification
             result = analyze_log(threat.log_content)
 
-            # Keep deterministic high-risk findings from being downgraded by the LLM.
-            current_severity = threat.severity_level.upper()
+            # Never let AI downgrade a higher-confidence deterministic finding.
             ai_severity = result["severity"]
-            rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
-            final_severity = current_severity if rank.get(current_severity, 0) >= rank.get(ai_severity, 0) else ai_severity
+            final_severity = previous_severity if _rank(previous_severity) >= _rank(ai_severity) else ai_severity
 
             ai_attack_type = result.get("attack_type", "UNKNOWN")
             if not threat.attack_type and ai_attack_type != "UNKNOWN":
                 threat.attack_type = ai_attack_type
 
             if final_severity in {"HIGH", "CRITICAL"}:
+                threat.classification = "ATTACK"
+            elif result.get("classification") == "ATTACK":
                 threat.classification = "ATTACK"
             elif result.get("classification") == "SUSPICIOUS" and threat.classification == "NORMAL":
                 threat.classification = "SUSPICIOUS"
@@ -50,6 +58,16 @@ def process_ai_analysis():
                 "explanation", "ai_analyzed", "ai_model", "ai_confidence",
                 "ai_summary", "ai_recommendation", "ai_indicators"
             ])
+
+            # Alert only when AI newly escalates a previously lower-risk event.
+            escalated = (
+                _rank(final_severity) > _rank(previous_severity)
+                or (previous_classification != "ATTACK" and threat.classification == "ATTACK"
+                    and _rank(final_severity) >= _rank("HIGH"))
+            )
+            if escalated and alert_service.should_alert(final_severity):
+                alert_service.send_alert(threat)
+
         except Exception:
             logger.exception("AI analysis failed for ThreatLog %s", threat.pk)
 
